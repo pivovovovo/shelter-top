@@ -65,18 +65,55 @@ export const Lobby: React.FC = () => {
       socket.off('kicked', onKicked);
     };
   }, [roomId, playerId, playerName, navigate, user?.id]);
+  // Универсальная функция копирования (работает на HTTP и HTTPS)
+  const copyToClipboard = async (text: string, successMsg: string) => {
+    try {
+      // 1. Пробуем современный API (только для HTTPS/localhost)
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        alert(successMsg);
+        return true;
+      }
 
-  const copyCode = () => {
-    navigator.clipboard.writeText(roomId || '');
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+      // 2. Fallback для HTTP — через временный textarea
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      textarea.style.top = '0';
+      textarea.style.left = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textarea);
+
+      if (successful) {
+        alert(successMsg);
+        return true;
+      }
+      throw new Error('execCommand failed');
+    } catch (err) {
+      // 3. Крайний случай — показываем ссылку, чтобы скопировали вручную
+      prompt('Не удалось скопировать автоматически. Скопируйте вручную:', text);
+      return false;
+    }
   };
 
-  // 👇 Копирование ссылки для большого экрана
-  const copyBoardLink = () => {
+  const copyCode = async () => {
+    const ok = await copyToClipboard(roomId || '', 'Код комнаты скопирован!');
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const copyBoardLink = async () => {
     const boardUrl = `${window.location.origin}/board/${roomId}`;
-    navigator.clipboard.writeText(boardUrl);
-    alert('Ссылка на ЭКРАН ВЕДУЩЕГО скопирована!\nОткройте её на ПК или телевизоре.');
+    await copyToClipboard(
+      boardUrl,
+      `📺 Ссылка на ЭКРАН ВЕДУЩЕГО скопирована!\n\n${boardUrl}\n\nОткройте её на ПК или телевизоре.`
+    );
   };
 
   // 👇 Все emit с колбэками
