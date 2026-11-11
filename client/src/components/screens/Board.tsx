@@ -34,11 +34,11 @@ export const Board: React.FC = () => {
     e.preventDefault();
     socket.emit('joinBoard', { roomId, password }, (res: any) => {
       if (res?.success) { setRoom(res.room); setError(''); }
-      else setError(res?.error || 'Ошибка');
+      else setError(res?.error || 'Ошибка подключения');
     });
   };
 
-  // Экран ввода пароля для большого экрана
+  // Экран ввода пароля
   if (!room) {
     return (
       <div className="min-h-screen bg-bunker-bg flex items-center justify-center p-4">
@@ -58,10 +58,9 @@ export const Board: React.FC = () => {
     );
   }
 
-  // Сам экран вещания
+  // Сам экран (табло)
   return (
     <div className="min-h-screen bg-bunker-bg bg-grid p-6 text-bunker-text overflow-hidden">
-      {/* Шапка */}
       <div className="flex justify-between items-end mb-6 border-b border-bunker-border pb-4">
         <div>
           <h1 className="text-4xl font-black text-amber-glow tracking-wider">БУНКЕР</h1>
@@ -69,11 +68,10 @@ export const Board: React.FC = () => {
         </div>
         <div className="text-right">
           <div className="text-2xl font-black text-bunker-amber">Раунд {room.currentRound}</div>
-          <div className="text-lg text-bunker-red font-bold">{room.catastrophe?.name}</div>
+          <div className="text-lg text-bunker-red font-bold">{room.catastrophe?.name || 'Ожидание...'}</div>
         </div>
       </div>
 
-      {/* Сетка игроков */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
         {room.players.map((p: any) => (
           <div key={p.id} className={`card p-3 border-2 ${!p.isAlive ? 'border-bunker-red/50 opacity-50' : room.currentSpeaker === p.id ? 'border-bunker-amber animate-pulse' : 'border-bunker-border'}`}>
@@ -88,14 +86,14 @@ export const Board: React.FC = () => {
             <div className="grid grid-cols-2 gap-1.5">
               {fieldsConfig.map(f => {
                 const isRevealed = p.revealedFields?.includes(f.key);
-                if (!isRevealed) return null; // Показываем ТОЛЬКО раскрытые поля
+                if (!isRevealed) return null;
                 
                 const val = p.card?.[f.key];
                 const val2 = p.card?.[`${f.key}2`];
                 return (
                   <div key={f.key} className="bg-bunker-surface2 p-1.5 rounded text-xs">
                     <div className="text-[9px] text-bunker-muted uppercase">{f.icon} {f.label}</div>
-                    <div className="text-bunker-text truncate" title={val}>
+                    <div className="text-bunker-text truncate">
                       {Array.isArray(val) ? val.join(', ') : val}
                       {val2 && <span className="text-bunker-green ml-1">+ {Array.isArray(val2) ? val2.join(', ') : val2}</span>}
                     </div>

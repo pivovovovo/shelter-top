@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ConnectionStatus } from './components/ConnectionStatus';
 import { AuthScreen } from './components/screens/AuthScreen';
@@ -11,12 +11,14 @@ import { Board } from './components/screens/Board';
 
 function AppRoutes() {
   const { user, isGuest } = useAuth();
+  const location = useLocation();
 
-  // Экран ведущего доступен БЕЗ регистрации
-  if (window.location.pathname.startsWith('/board/')) {
+  // Если адрес начинается с /board/ — показываем только Экран Ведущего
+  if (location.pathname.startsWith('/board/')) {
     return (
       <Routes>
         <Route path="/board/:roomId" element={<Board />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     );
   }
