@@ -1,0 +1,115 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: env(safe-area-inset-top, 0px);
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-bunker-bg text-bunker-text min-h-screen font-sans antialiased;
+    overscroll-behavior-y: none;
+    /* Легкая текстура "бумаги" */
+    background-image: radial-gradient(circle at 50% 0%, rgba(61, 53, 42, 0.1) 0%, transparent 70%);
+  }
+
+  input, textarea, select {
+    font-size: 16px;
+  }
+
+  ::selection {
+    @apply bg-bunker-amber/30 text-bunker-amber;
+  }
+
+  /* Скроллбар в тёплых тонах */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-bunker-bg;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-bunker-border rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-bunker-muted/50;
+  }
+}
+
+@layer components {
+  /* Кнопки: мягкие, уютные */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-xl2 font-semibold text-sm transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+  .btn-primary {
+    @apply btn bg-bunker-amber text-bunker-bg hover:bg-yellow-500 shadow-warm-sm hover:shadow-amber-glow;
+  }
+  .btn-danger {
+    @apply btn bg-bunker-red text-white hover:bg-red-600 shadow-warm-sm;
+  }
+  .btn-success {
+    @apply btn bg-bunker-green text-bunker-bg hover:bg-green-500 shadow-warm-sm;
+  }
+  .btn-gold {
+    @apply btn bg-bunker-gold text-bunker-bg hover:bg-yellow-400 shadow-warm-sm;
+  }
+  .btn-purple {
+    @apply btn bg-bunker-purple text-white hover:bg-purple-500 shadow-warm-sm;
+  }
+  .btn-ghost {
+    @apply btn bg-bunker-surface2 text-bunker-text border border-bunker-border hover:border-bunker-amber/50 hover:bg-bunker-surface;
+  }
+
+  /* Карточки: с мягкой тенью */
+  .card {
+    @apply bg-bunker-surface border border-bunker-border rounded-xl2 shadow-warm-md;
+  }
+  .card-inner {
+    @apply bg-bunker-surface2 rounded-xl p-3 border border-bunker-border/50;
+  }
+
+  /* Бейджи: приглушённые */
+  .badge {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-semibold border;
+  }
+
+  /* Sticky header */
+  .sticky-header {
+    @apply sticky top-0 z-30 bg-bunker-bg/95 backdrop-blur-md border-b border-bunker-border shadow-warm-sm;
+    padding-top: var(--safe-top);
+  }
+
+  /* Нижняя навигация */
+  .bottom-nav {
+    @apply fixed bottom-0 left-0 right-0 z-40 bg-bunker-surface/95 backdrop-blur-md border-t border-bunker-border shadow-[0_-4px_16px_rgba(0,0,0,0.4)];
+    padding-bottom: var(--safe-bottom);
+  }
+
+  /* Отступ для нижней навигации */
+  .pb-safe-nav {
+    padding-bottom: calc(80px + var(--safe-bottom));
+  }
+
+  /* Скрыть скроллбар */
+  .scroll-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scroll-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Тёплый текст */
+  .text-amber-glow {
+    @apply text-bunker-amber;
+    text-shadow: 0 0 8px rgba(212, 160, 74, 0.3);
+  }
+}
