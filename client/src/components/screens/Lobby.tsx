@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { socket } from '../../lib/socket';
+import { useAuth } from '../../context/AuthContext';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { BottomSheet } from '../ui/BottomSheet';
@@ -17,6 +18,7 @@ export const Lobby: React.FC = () => {
   const { roomId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth(); // 👈 Берем юзера для синхронизации
 
   const [room, setRoom] = useState<any>(location.state?.room || null);
   const [copied, setCopied] = useState(false);
@@ -29,10 +31,16 @@ export const Lobby: React.FC = () => {
   useEffect(() => {
     socket.connect();
     
-    // Принудительная синхронизация при заходе (важно для рестарта игры)
+    // Принудительная синхронизация при заходе (важно для рестарта игры и F5)
     if (roomId && playerId) {
       setIsSyncing(true);
-      socket.emit('syncRoom', { roomId, playerId, playerName, isHost: false }, (res: any) => {
+      socket.emit('syncRoom', { 
+        roomId, 
+        playerId, 
+        playerName, 
+        isHost: false,
+        userId: user?.id // 👈 передаем userId
+      }, (res: any) => {
         setIsSyncing(false);
         if (res?.success) setRoom(res.room);
         else navigate('/');
@@ -56,7 +64,7 @@ export const Lobby: React.FC = () => {
       socket.off('roomUpdated', onRoomUpdated); 
       socket.off('kicked', onKicked);
     };
-  }, [roomId, playerId, playerName, navigate]);
+  }, [roomId, playerId, playerName, navigate, user?.id]);
 
   const copyCode = () => {
     navigator.clipboard.writeText(roomId || '');
@@ -64,21 +72,26 @@ export const Lobby: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // 👇 Исправлено: добавлен колбэк
+  // 👇 Копирование ссылки для большого экрана
+  const copyBoardLink = () => {
+    const boardUrl = `${window.location.origin}/board/${roomId}`;
+    navigator.clipboard.writeText(boardUrl);
+    alert('Ссылка на ЭКРАН ВЕДУЩЕГО скопирована!\nОткройте её на ПК или телевизоре.');
+  };
+
+  // 👇 Все emit с колбэками
   const startGame = () => {
     socket.emit('startGame', { roomId, playerId }, (res: any) => {
       if (!res?.success) alert(res?.error);
     });
   };
 
-  // 👇 Исправлено: добавлен колбэк
   const leaveRoom = () => {
-    socket.emit('leaveRoom', { roomId, playerId }, (res: any) => {
+    socket.emit('leaveRoom', { roomId, playerId }, () => {
       navigate('/');
     });
   };
 
-  // 👇 Исправлено: добавлен колбэк
   const kickPlayer = (targetId: string) => {
     if (!confirm('Точно кикнуть этого игрока?')) return;
     socket.emit('kickPlayer', { roomId, playerId, targetId }, (res: any) => {
@@ -103,10 +116,13 @@ export const Lobby: React.FC = () => {
           <div className="text-2xl font-mono font-black text-bunker-amber tracking-widest">{room.id}</div>
         </div>
         <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={copyCode}>
+          <Button variant="ghost" size="sm" onClick={copyCode} title="Скопировать код">
             {copied ? '✅' : '📋'}
           </Button>
-          <Button variant="danger" size="sm" onClick={leaveRoom}>
+          <Button variant="ghost" size="sm" onClick={copyBoardLink} title="Ссылка на Экран Ведущего">
+            📺
+          </Button>
+          <Button variant="danger" size="sm" onClick={leaveRoom} title="Выйти">
             🚪
           </Button>
         </div>
@@ -124,6 +140,13 @@ export const Lobby: React.FC = () => {
           </Card>
         </div>
 
+        {/* Плашка с паролем, если он есть */}
+        {room.password && (
+          <div className="bg-bunker-gold/10 border border-bunker-gold/30 rounded-xl p-2 text-center text-xs text-bunker-gold">
+            🔒 Комната защищена паролем
+          </div>
+        )}
+
         <div className="space-y-2">
           {room.players.map((p: any) => (
             <div key={p.id} className={`card p-3 flex items-center gap-3 ${p.id === playerId ? 'border-bunker-amber/50' : ''}`}>
@@ -133,11 +156,10 @@ export const Lobby: React.FC = () => {
                   <span className="font-bold text-sm">{p.name}</span>
                   {p.id === playerId && <span className="badge bg-bunker-amber/20 text-bunker-amber border-bunker-amber/30">Вы</span>}
                   {p.isHost && <span className="badge bg-bunker-gold/20 text-bunker-gold border-bunker-gold/30">👑</span>}
-                  {p.isObserver && <span className="badge bg-bunker-purple/20 text-bunker-purple border-bunker-purple/30">👁️</span>}
                 </div>
               </div>
               
-              {/* Кнопка кика */}
+              {/* Кнопка кика (только для хоста) */}
               {isHost && !p.isHost && (
                 <button 
                   onClick={() => kickPlayer(p.id)}

@@ -4,26 +4,16 @@ import type { Bunker } from './bunkerGenerator';
 import type { ActionCard, ActionCardType } from './actionCardGenerator';
 
 export interface CharacterCard {
-  profession: string;
-  profession2?: string;
-  gender: string;
-  gender2?: string;
-  age: string;
-  age2?: string;
-  health: string;
-  health2?: string;
-  badHabit: string;
-  badHabit2?: string;
-  hobby: string;
-  hobby2?: string;
-  luggage: string[];
-  luggage2?: string[];
-  phobia: string;
-  phobia2?: string;
-  specialInfo: string;
-  specialInfo2?: string;
-  fact: string;
-  fact2?: string;
+  profession: string; profession2?: string;
+  gender: string; gender2?: string;
+  age: string; age2?: string;
+  health: string; health2?: string;
+  badHabit: string; badHabit2?: string;
+  hobby: string; hobby2?: string;
+  luggage: string[]; luggage2?: string[];
+  phobia: string; phobia2?: string;
+  specialInfo: string; specialInfo2?: string;
+  fact: string; fact2?: string;
 }
 
 export type RevealedField =
@@ -41,7 +31,6 @@ export interface Player {
   name: string;
   userId?: string;
   isHost: boolean;
-  isObserver: boolean;
   card?: CharacterCard;
   isAlive: boolean;
   revealedFields: RevealedField[];
@@ -59,29 +48,20 @@ export interface Player {
 }
 
 export interface ChatMessage {
-  id: string;
-  playerId: string;
-  playerName: string;
-  text: string;
-  timestamp: number;
+  id: string; playerId: string; playerName: string; text: string; timestamp: number;
 }
 
 export interface Vote {
-  voterId: string;
-  targetId: string;
+  voterId: string; targetId: string;
 }
 
 export interface PendingRevealRequest {
-  id: string;
-  targetPlayerId: string;
-  sourcePlayerId: string;
-  cardType: 'panic';
-  count: number;
-  createdAt: number;
+  id: string; targetPlayerId: string; sourcePlayerId: string; cardType: 'panic'; count: number; createdAt: number;
 }
 
 export interface Room {
   id: string;
+  password?: string; // 👈 Пароль
   players: Map<string, Player>;
   maxPlayers: number;
   bunkerCapacity: number;
@@ -90,10 +70,7 @@ export interface Room {
   allRevealed: boolean;
   catastrophe: Catastrophe | null;
   bunker: Bunker | null;
-  lastVotingResult: {
-    excludedPlayerId: string | null;
-    voteCounts: Record<string, number>;
-  } | null;
+  lastVotingResult: { excludedPlayerId: string | null; voteCounts: Record<string, number>; } | null;
   pendingRevealRequests: PendingRevealRequest[];
   referendumActive: boolean;
   referendumProtectedId: string | null;
@@ -103,7 +80,7 @@ export interface Room {
 }
 
 export interface RoomRepository {
-  createRoom(roomId: string, hostPlayer: Player, maxPlayers: number, bunkerCapacity: number): Room;
+  createRoom(roomId: string, hostPlayer: Player, maxPlayers: number, bunkerCapacity: number, password?: string): Room;
   findRoomById(roomId: string): Room | undefined;
   addPlayerToRoom(roomId: string, player: Player): Room | undefined;
   removePlayerFromRoom(roomId: string, playerId: string): Room | undefined;
@@ -122,43 +99,21 @@ export const createRoomSchema = z.object({
   playerName: z.string().min(1).max(30),
   maxPlayers: z.number().min(2).max(16),
   bunkerCapacity: z.number().min(1).max(15),
-  isObserver: z.boolean().optional(),
+  password: z.string().optional(), // 👈
 });
 
 export const joinRoomSchema = z.object({
   roomId: z.string().min(1),
   playerId: z.string().min(1),
   playerName: z.string().min(1).max(30),
+  password: z.string().optional(), // 👈
 });
 
-export const startGameSchema = z.object({
-  roomId: z.string().min(1),
-  playerId: z.string().min(1),
-});
-
-export const roomActionSchema = z.object({
-  roomId: z.string().min(1),
-  playerId: z.string().min(1),
-});
-
-export const sendMessageSchema = z.object({
-  roomId: z.string().min(1),
-  playerId: z.string().min(1),
-  playerName: z.string().min(1),
-  text: z.string().min(1).max(500),
-});
-
-export const voteSchema = z.object({
-  roomId: z.string().min(1),
-  playerId: z.string().min(1),
-  targetPlayerId: z.string().min(1),
-});
-
-export const revealCardSchema = z.object({
-  roomId: z.string().min(1),
-  playerId: z.string().min(1),
-  field: z.enum(ALL_FIELDS as [RevealedField, ...RevealedField[]]),
-});
+export const startGameSchema = z.object({ roomId: z.string().min(1), playerId: z.string().min(1) });
+export const roomActionSchema = z.object({ roomId: z.string().min(1), playerId: z.string().min(1) });
+export const sendMessageSchema = z.object({ roomId: z.string().min(1), playerId: z.string().min(1), playerName: z.string().min(1), text: z.string().min(1).max(500) });
+export const voteSchema = z.object({ roomId: z.string().min(1), playerId: z.string().min(1), targetPlayerId: z.string().min(1) });
+export const revealCardSchema = z.object({ roomId: z.string().min(1), playerId: z.string().min(1), field: z.enum(ALL_FIELDS as [RevealedField, ...RevealedField[]]) });
 
 export type CreateRoomInput = z.infer<typeof createRoomSchema>;
 export type JoinRoomInput = z.infer<typeof joinRoomSchema>;

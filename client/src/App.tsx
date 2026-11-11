@@ -7,14 +7,21 @@ import { Lobby } from './components/screens/Lobby';
 import { Game } from './components/screens/Game';
 import { Voting } from './components/screens/Voting';
 import { Results } from './components/screens/Results';
+import { Board } from './components/screens/Board';
 
 function AppRoutes() {
   const { user, isGuest } = useAuth();
 
-  // Если не авторизован и не гость — показываем экран входа
-  if (!user && !isGuest) {
-    return <AuthScreen />;
+  // Экран ведущего доступен БЕЗ регистрации
+  if (window.location.pathname.startsWith('/board/')) {
+    return (
+      <Routes>
+        <Route path="/board/:roomId" element={<Board />} />
+      </Routes>
+    );
   }
+
+  if (!user && !isGuest) return <AuthScreen />;
 
   return (
     <Routes>

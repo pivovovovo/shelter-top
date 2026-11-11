@@ -3,9 +3,10 @@ import { Room, RoomRepository, Player, ChatMessage, Vote } from './types';
 export class InMemoryRoomRepository implements RoomRepository {
   private rooms: Map<string, Room> = new Map();
 
-  createRoom(roomId: string, hostPlayer: Player, maxPlayers: number, bunkerCapacity: number): Room {
+  createRoom(roomId: string, hostPlayer: Player, maxPlayers: number, bunkerCapacity: number, password?: string): Room {
     const newRoom: Room = {
       id: roomId,
+      password: password, // 👈
       players: new Map([[hostPlayer.id, hostPlayer]]),
       maxPlayers,
       bunkerCapacity,
@@ -26,17 +27,15 @@ export class InMemoryRoomRepository implements RoomRepository {
     return newRoom;
   }
 
-  findRoomById(roomId: string): Room | undefined {
-    return this.rooms.get(roomId);
-  }
-
+  findRoomById(roomId: string): Room | undefined { return this.rooms.get(roomId); }
+  
   addPlayerToRoom(roomId: string, player: Player): Room | undefined {
     const room = this.rooms.get(roomId);
     if (!room) return undefined;
     room.players.set(player.id, player);
     return room;
   }
-
+  
   removePlayerFromRoom(roomId: string, playerId: string): Room | undefined {
     const room = this.rooms.get(roomId);
     if (!room) return undefined;
@@ -44,9 +43,7 @@ export class InMemoryRoomRepository implements RoomRepository {
     return room;
   }
 
-  deleteRoom(roomId: string): void {
-    this.rooms.delete(roomId);
-  }
+  deleteRoom(roomId: string): void { this.rooms.delete(roomId); }
 
   findRoomBySocketId(socketId: string): { roomId: string; room: Room } | undefined {
     for (const [roomId, room] of this.rooms.entries()) {
