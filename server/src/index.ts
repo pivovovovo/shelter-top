@@ -409,15 +409,39 @@ io.on('connection', (socket) => {
     const data = validatePayload<RoomActionInput>(roomActionSchema, payload, socket, callback);
     if (!data) return;
     const room = roomRepository.findRoomById(data.roomId);
-    if (!room || !room.players.get(data.playerId)?.isHost) return callback({ success: false, error: 'Только хост' });
-    if (room.status !== 'discussion') return callback({ success: false, error: 'Сейчас не обсуждение' });
+    if (!room) return callback({ success: false, error: 'Комната не найдена' });
 
+    const player = room.players.get(data.playerId);
+    const isCreator = room.creatorId === data.playerId;
+    const isFirstPlayer = Array.from(room.players.values())[0]?.id === data.playerId;
+    
+    if (!player?.isHost && !isCreator && !isFirstPlayer) {
+      return callback({ success: false, error: 'Только хост' });
+    }
+
+    // 👇 Если уже голосование — просто подтверждаем
+    if (room.status === 'voting') {
+      return callback({ success: true, alreadyVoting: true });
+    }
+
+    // 👇 Если лобби — просим сначала начать игру
+    if (room.status === 'lobby') {
+      return callback({ success: false, error: 'Игра ещё не началась. Нажмите "Начать игру" в лобби.' });
+    }
+
+    // 👇 Если результаты или финал — тоже говорим что не время
+    if (room.status === 'results' || room.status === 'finished') {
+      return callback({ success: false, error: 'Раунд уже завершён. Нажмите "Следующий раунд".' });
+    }
+
+    // status === 'discussion' — начинаем голосование
     room.status = 'voting';
     room.votes = [];
     room.currentSpeaker = null;
     room.referendumActive = false;
     room.referendumProtectedId = null;
     room.players.forEach((p) => { p.hostBonusVotes = 0; p.isDiscredited = false; p.isIsolated = false; });
+    
     sendSystemMessage(data.roomId, `🗳️ Хост начал голосование!`);
     sendRoom(data.roomId, room);
     callback({ success: true });

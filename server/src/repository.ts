@@ -6,7 +6,8 @@ export class InMemoryRoomRepository implements RoomRepository {
   createRoom(roomId: string, hostPlayer: Player, maxPlayers: number, bunkerCapacity: number, password?: string): Room {
     const newRoom: Room = {
       id: roomId,
-      password: password, // 👈
+      password: password,
+      creatorId: hostPlayer.id, // 👈
       players: new Map([[hostPlayer.id, hostPlayer]]),
       maxPlayers,
       bunkerCapacity,
@@ -28,14 +29,14 @@ export class InMemoryRoomRepository implements RoomRepository {
   }
 
   findRoomById(roomId: string): Room | undefined { return this.rooms.get(roomId); }
-  
+
   addPlayerToRoom(roomId: string, player: Player): Room | undefined {
     const room = this.rooms.get(roomId);
     if (!room) return undefined;
     room.players.set(player.id, player);
     return room;
   }
-  
+
   removePlayerFromRoom(roomId: string, playerId: string): Room | undefined {
     const room = this.rooms.get(roomId);
     if (!room) return undefined;

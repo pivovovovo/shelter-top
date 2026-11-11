@@ -61,7 +61,8 @@ export interface PendingRevealRequest {
 
 export interface Room {
   id: string;
-  password?: string; // 👈 Пароль
+  password?: string;
+  creatorId: string; // 👈 ДОБАВЛЕНО
   players: Map<string, Player>;
   maxPlayers: number;
   bunkerCapacity: number;
@@ -99,14 +100,14 @@ export const createRoomSchema = z.object({
   playerName: z.string().min(1).max(30),
   maxPlayers: z.number().min(2).max(16),
   bunkerCapacity: z.number().min(1).max(15),
-  password: z.string().optional(), // 👈
+  password: z.string().optional(),
 });
 
 export const joinRoomSchema = z.object({
   roomId: z.string().min(1),
   playerId: z.string().min(1),
   playerName: z.string().min(1).max(30),
-  password: z.string().optional(), // 👈
+  password: z.string().optional(),
 });
 
 export const startGameSchema = z.object({ roomId: z.string().min(1), playerId: z.string().min(1) });

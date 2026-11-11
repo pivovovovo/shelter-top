@@ -18,7 +18,7 @@ const fieldsConfig = [
   { key: 'luggage', label: 'Багаж', icon: '🎒' },
   { key: 'phobia', label: 'Фобия', icon: '😨' },
   { key: 'specialInfo', label: 'Доп. инфо', icon: '🤫' },
-  { key: 'fact', label: 'Факт', icon: '💡' }, // 👈
+  { key: 'fact', label: 'Факт', icon: '💡' },
 ] as const;
 
 const JOKER_OPTIONS = [
@@ -61,6 +61,7 @@ export const Game: React.FC = () => {
       if (updatedMe?.card) setMyCard(updatedMe.card);
       if (r.status === 'voting') navigate(`/voting/${roomId}`);
       if (r.status === 'results') navigate(`/results/${roomId}`);
+      if (r.status === 'lobby') navigate(`/lobby/${roomId}`);
     };
 
     socket.on('roomUpdated', onRoomUpdated);
@@ -70,18 +71,36 @@ export const Game: React.FC = () => {
   if (!room) return <div className="min-h-screen flex items-center justify-center text-bunker-amber">Загрузка...</div>;
 
   const me = room.players.find((p: any) => p.id === playerId);
-  const isHost = me?.isHost;
-  const isObserver = me?.isObserver;
+  const isCreator = room.creatorId === playerId || room.players[0]?.id === playerId;
+  const isHost = me?.isHost || isCreator;
+  const canControl = isHost || isCreator;
   const usedThisRound = me?.revealedThisRound?.length || 0;
-  const baseLimit = room.currentRound === 1 ? 2 : 1;
+  const baseLimit = room.currentRound <= 2 ? 2 : 1;
   const roundLimit = me?.hasScholar ? baseLimit + 1 : baseLimit;
   const speaker = room.players.find((p: any) => p.id === room.currentSpeaker);
 
-  const emitAction = (ev: string) => socket.emit(ev, { roomId, playerId }, (res: any) => { if (!res?.success) alert(res?.error); });
-  
+  // 👇 Восстановлена эта функция
   const handleReveal = (field: string) => {
     sounds.reveal();
-    socket.emit('revealCard', { roomId, playerId, field }, (res: any) => { if (!res?.success) alert(res?.error); });
+    socket.emit('revealCard', { roomId, playerId, field }, (res: any) => {
+      if (!res?.success) alert(res?.error || 'Ошибка раскрытия');
+    });
+  };
+
+  const emitAction = (ev: string) => {
+    socket.emit(ev, { roomId, playerId }, (res: any) => {
+      if (!res?.success) {
+        socket.emit('syncRoom', { roomId, playerId, playerName, isHost: false }, (syncRes: any) => {
+          if (syncRes?.success) {
+            setRoom(syncRes.room);
+            if (syncRes.room.status === 'voting') navigate(`/voting/${roomId}`);
+            if (syncRes.room.status === 'results') navigate(`/results/${roomId}`);
+            if (syncRes.room.status === 'lobby') navigate(`/lobby/${roomId}`);
+          }
+        });
+        alert(res?.error || 'Ошибка');
+      }
+    });
   };
 
   const tabs: NavTab[] = [
@@ -100,7 +119,7 @@ export const Game: React.FC = () => {
         </div>
       )}
       
-      {isHost && (
+      {canControl && (
         <div className="grid grid-cols-2 gap-2 mb-4">
           <Button variant="danger" size="sm" onClick={() => emitAction('startVoting')}>🗳️ К голосованию</Button>
           <Button variant="ghost" size="sm" onClick={() => emitAction('nextRound')}>⏭️ След. раунд</Button>
@@ -203,7 +222,7 @@ export const Game: React.FC = () => {
                     <div className="bg-bunker-surface2 p-2 rounded-lg space-y-2">
                       <select value={referendumTarget} onChange={(e) => setReferendumTarget(e.target.value)} className="w-full bg-bunker-bg border border-bunker-border rounded p-2 text-xs">
                         <option value="">Кого защитить?</option>
-                        {room.players.filter((p: any) => p.isAlive && !p.isObserver).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        {room.players.filter((p: any) => p.isAlive).map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                       </select>
                       <Button variant="primary" size="sm" fullWidth onClick={() => {
                         if (!referendumTarget) return alert('Выберите игрока');
@@ -218,7 +237,7 @@ export const Game: React.FC = () => {
                         </select>
                       )}
                       <div className="grid grid-cols-2 gap-1">
-                        {room.players.filter((p: any) => p.isAlive && !p.isObserver && p.id !== playerId).map((t: any) => (
+                        {room.players.filter((p: any) => p.isAlive && p.id !== playerId).map((t: any) => (
                           <Button key={t.id} variant="ghost" size="sm" onClick={() => {
                             const emit = (ev: string, data: any) => socket.emit(ev, data, (res: any) => { if (!res?.success) alert(res?.error); });
                             if (card.type === 'blockVote') emit('useBlockVote', { roomId, playerId, targetId: t.id, cardIndex: idx });
