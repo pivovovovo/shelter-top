@@ -1,9 +1,16 @@
 import { io, Socket } from 'socket.io-client';
 
 const getServerUrl = () => {
+  // 1. Если есть переменная окружения — используем её (для продакшена)
+  const envUrl = import.meta.env.VITE_SERVER_URL;
+  if (envUrl) return envUrl;
+
+  // 2. Если открыто не с localhost — используем текущий хост (без порта, через nginx)
   if (typeof window !== 'undefined' && window.location.hostname !== 'localhost') {
-    return `http://${window.location.hostname}:3001`;
+    return `http://${window.location.hostname}`;
   }
+
+  // 3. Локальная разработка (напрямую к серверу)
   return 'http://localhost:3001';
 };
 
