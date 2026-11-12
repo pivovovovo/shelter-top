@@ -38,46 +38,56 @@ export const Results: React.FC = () => {
 
   useEffect(() => {
     socket.connect();
+    
+    // Функция проверки статуса и редиректа
+    const checkStatusAndRedirect = (r: any) => {
+      if (r.status === 'discussion') navigate(`/game/${roomId}`);
+      if (r.status === 'voting') navigate(`/voting/${roomId}`);
+      if (r.status === 'lobby') navigate(`/lobby/${roomId}`);
+    };
+
     socket.emit('syncRoom', { roomId, playerId, playerName, isHost: false }, (res: any) => {
       if (res?.success) {
-        setRoom(res.room);
-        if (res.room.status === 'voting') navigate(`/voting/${roomId}`);
+        // Если мы зашли на /results, но на сервере уже игра — сразу кидаем на игру
+        if (res.room.status !== 'results' && res.room.status !== 'finished') {
+          checkStatusAndRedirect(res.room);
+        } else {
+          setRoom(res.room);
+        }
       } else navigate('/');
     });
 
     const onUpdate = (r: any) => {
-      console.log('[Results] roomUpdated:', r.status);
+      // Если статус изменился (например, хост начал новый раунд) — перекидываем
+      if (r.status !== 'results' && r.status !== 'finished') {
+        checkStatusAndRedirect(r);
+        return; // Не обновляем стейт, мы уходим
+      }
+      
       setRoom(r);
-      if (r.lastVotingResult?.excludedPlayerId && r.lastVotingResult.excludedPlayerId !== room?.lastVotingResult?.excludedPlayerId) sounds.boom();
-      if (r.status === 'discussion') navigate(`/game/${roomId}`);
-      if (r.status === 'voting') navigate(`/voting/${roomId}`);
-      if (r.status === 'lobby') navigate(`/lobby/${roomId}`);
+      if (r.lastVotingResult?.excludedPlayerId && r.lastVotingResult.excludedPlayerId !== room?.lastVotingResult?.excludedPlayerId) {
+        sounds.boom();
+      }
     };
 
     socket.on('roomUpdated', onUpdate);
     return () => { socket.off('roomUpdated', onUpdate); };
   }, [roomId, playerId, playerName, navigate, room?.lastVotingResult?.excludedPlayerId]);
 
-  const syncAndNavigate = () => {
-    socket.emit('syncRoom', { roomId, playerId, playerName, isHost: false }, (res: any) => {
-      if (res?.success) {
-        setRoom(res.room);
-        if (res.room.status === 'discussion') navigate(`/game/${roomId}`);
-        if (res.room.status === 'voting') navigate(`/voting/${roomId}`);
-        if (res.room.status === 'lobby') navigate(`/lobby/${roomId}`);
-      }
-    });
-  };
-
   const handleNextRound = () => {
+    if (loading) return; // Защита от дабл-клика
     setLoading('next');
-    console.log('📤 Отправляем nextRound, статус:', room?.status);
     socket.emit('nextRound', { roomId, playerId }, (res: any) => {
       setLoading(null);
-      console.log('📥 Ответ nextRound:', res);
       if (!res?.success) {
-        alert(res?.error || 'Ошибка');
-        syncAndNavigate();
+        // Если пришла ошибка — перезапрашиваем комнату (вдруг мы уже в игре)
+        socket.emit('syncRoom', { roomId, playerId, playerName, isHost: false }, (syncRes: any) => {
+          if (syncRes?.success) {
+            if (syncRes.room.status === 'discussion') navigate(`/game/${roomId}`);
+            else if (syncRes.room.status === 'voting') navigate(`/voting/${roomId}`);
+            else alert(res?.error || 'Ошибка');
+          }
+        });
       }
     });
   };
@@ -96,7 +106,9 @@ export const Results: React.FC = () => {
       setLoading(null);
       if (!res?.success) {
         alert(res?.error);
-        syncAndNavigate();
+        socket.emit('syncRoom', { roomId, playerId, playerName, isHost: false }, (syncRes: any) => {
+          if (syncRes?.success && syncRes.room.status === 'lobby') navigate(`/lobby/${roomId}`);
+        });
       }
     });
   };
@@ -216,13 +228,13 @@ export const Results: React.FC = () => {
       </div>
 
       <div className="mt-auto space-y-3 pb-8">
-        {canControl ? (
+        {canControl && room.status === 'results' ? (
           <Button variant="primary" fullWidth size="lg" onClick={handleNextRound} loading={loading === 'next'}>
             ⏭️ Следующий раунд ({room.currentRound + 1})
           </Button>
-        ) : (
+        ) : !canControl ? (
           <div className="text-center text-bunker-muted py-3 text-sm bg-bunker-surface2 rounded-xl border border-bunker-border">Ожидание хоста...</div>
-        )}
+        ) : null}
       </div>
     </div>
   );

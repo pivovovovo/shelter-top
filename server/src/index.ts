@@ -589,6 +589,11 @@ io.on('connection', (socket) => {
       return callback({ success: false, error: 'Только хост или создатель' });
     }
 
+        // Если раунд уже начался (например, из-за двойного клика) — просто игнорируем
+    if (room!.status === 'discussion') {
+      return callback({ success: true, message: 'Раунд уже начат' });
+    }
+
     if (room!.status !== 'results') {
       return callback({ 
         success: false, 
