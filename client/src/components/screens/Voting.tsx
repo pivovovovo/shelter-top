@@ -158,12 +158,26 @@ export const Voting: React.FC = () => {
         })}
       </main>
 
-      {isHost && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-bunker-bg/95 border-t border-bunker-border pb-[calc(16px+var(--safe-bottom))]">
+            {canControl && (
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-bunker-bg/95 border-t border-bunker-border pb-[calc(16px+var(--safe-bottom))] space-y-2">
           {allVoted ? (
-            <Button variant="primary" fullWidth size="lg" onClick={handleConfirm} className="animate-pulse">✅ Подтвердить исключение</Button>
+            <Button variant="primary" fullWidth size="lg" onClick={handleConfirm} className="animate-pulse">
+              ✅ Подтвердить исключение
+            </Button>
           ) : (
-            <Button variant="ghost" fullWidth size="lg" onClick={handleFinishEarly}>⏹️ Завершить досрочно</Button>
+            <>
+              <Button variant="ghost" fullWidth size="sm" onClick={handleFinishEarly}>
+                ⏹️ Завершить голосование (показать результаты)
+              </Button>
+              <Button variant="danger" fullWidth size="sm" onClick={() => {
+                if (!confirm('Пропустить голосование и сразу начать новый раунд? Текущие голоса будут учтены.')) return;
+                socket.emit('nextRound', { roomId, playerId }, (res: any) => {
+                  if (!res?.success) alert(res?.error);
+                });
+              }}>
+                ⏭️ Пропустить и начать новый раунд
+              </Button>
+            </>
           )}
         </div>
       )}

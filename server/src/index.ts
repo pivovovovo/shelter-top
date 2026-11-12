@@ -577,52 +577,108 @@ io.on('connection', (socket) => {
   });
 
   // 17. Следующий раунд
-    socket.on('nextRound', (payload: unknown, callback: (res: any) => void) => {
+      // Вспомогательная функция для начала следующего раунда
+  function startNextRoundLogic(room: Room): { finished: boolean; round: number } {
+    const alive = getAlivePlayers(room);
+    if (alive.length <= room.bunkerCapacity) {
+      room.status = 'finished';
+      saveGameStats(room);
+      return { finished: true, round: room.currentRound };
+    }
+
+    room.currentRound += 1;
+    room.status = 'discussion';
+    room.votes = [];
+    room.players.forEach((p) => {
+      p.revealedThisRound = [];
+      p.hasScholar = false;
+      p.hostBonusVotes = 0;
+      p.blockedFromVoting = [];
+      p.isDiscredited = false;
+      p.isIsolated = false;
+    });
+    room.referendumActive = false;
+    room.referendumProtectedId = null;
+    const aliveNow = getAlivePlayers(room);
+    room.currentSpeaker = aliveNow[0]?.id || null;
+    return { finished: false, round: room.currentRound };
+  }
+
+  socket.on('nextRound', (payload: unknown, callback: (res: any) => void) => {
     const data = validatePayload<RoomActionInput>(roomActionSchema, payload, socket, callback);
     if (!data) return;
     const room = roomRepository.findRoomById(data.roomId);
-    
+
     console.log(`[nextRound] Запрос от ${data.playerId}, статус: ${room?.status}, раунд: ${room?.currentRound}`);
-    
+
     if (!canControlRoom(room, data.playerId)) {
-      console.log(`[nextRound] ❌ Нет прав`);
       return callback({ success: false, error: 'Только хост или создатель' });
     }
 
-        // Если раунд уже начался (например, из-за двойного клика) — просто игнорируем
+    // 👇 ЕСЛИ ГОЛОСОВАНИЕ — СНАЧАЛА ЗАВЕРШАЕМ ЕГО
+    if (room!.status === 'voting') {
+      const counts = calculateVoteCounts(room!);
+      let excludedId = getLeader(counts);
+
+      if (excludedId) {
+        const excluded = room!.players.get(excludedId);
+        if (excluded?.hasImmunity) {
+          excluded.hasImmunity = false;
+          excludedId = null;
+          sendSystemMessage(data.roomId, `🛡️ ${excluded.name} использовал иммунитет!`);
+        } else if (excluded) {
+          excluded.isAlive = false;
+          sendSystemMessage(data.roomId, `☠️ ${excluded.name} покидает бункер (по итогам голосования)`);
+        }
+      }
+
+      room!.players.forEach((p) => {
+        p.hasDoubleVote = false;
+        p.hasImmunity = false;
+        p.hostBonusVotes = 0;
+        p.isDiscredited = false;
+        p.isIsolated = false;
+      });
+      room!.lastVotingResult = { excludedPlayerId: excludedId, voteCounts: Object.fromEntries(counts) };
+
+      // Проверяем, не закончилась ли игра
+      const aliveCount = getAlivePlayers(room!).length;
+      if (aliveCount <= room!.bunkerCapacity) {
+        room!.status = 'finished';
+        saveGameStats(room!);
+        sendSystemMessage(data.roomId, `🏆 Бункер заполнен! Игра окончена.`);
+        sendRoom(data.roomId, room!);
+        return callback({ success: true, finished: true });
+      }
+
+      // Начинаем следующий раунд
+      const result = startNextRoundLogic(room!);
+      sendSystemMessage(data.roomId, `⏭️ Хост пропустил голосование → Раунд ${result.round}!`);
+      sendRoom(data.roomId, room!);
+      io.to(data.roomId).emit('roundStarted', { round: result.round });
+      return callback({ success: true, finished: false, round: result.round });
+    }
+
+    // Статус discussion — раунд уже идёт, ничего не делаем
     if (room!.status === 'discussion') {
       return callback({ success: true, message: 'Раунд уже начат' });
     }
 
-    if (room!.status !== 'results') {
-      return callback({ 
-        success: false, 
-        error: `Нельзя начать новый раунд сейчас (статус: ${room!.status}). Завершите обсуждение голосованием.` 
-      });
-    }
-
-    const alive = getAlivePlayers(room!);
-    if (alive.length <= room!.bunkerCapacity) {
-      room!.status = 'finished';
+    // Статус results — начинаем новый раунд
+    if (room!.status === 'results') {
+      const result = startNextRoundLogic(room!);
+      if (result.finished) {
+        sendRoom(data.roomId, room!);
+        return callback({ success: true, finished: true });
+      }
+      sendSystemMessage(data.roomId, `🔄 Начался Раунд ${result.round}!`);
       sendRoom(data.roomId, room!);
-      return callback({ success: true, finished: true });
+      io.to(data.roomId).emit('roundStarted', { round: result.round });
+      return callback({ success: true, finished: false, round: result.round });
     }
 
-    room!.currentRound += 1;
-    room!.status = 'discussion';
-    room!.votes = [];
-    room!.players.forEach((p) => {
-      p.revealedThisRound = []; p.hasScholar = false; p.hostBonusVotes = 0;
-      p.blockedFromVoting = []; p.isDiscredited = false; p.isIsolated = false;
-    });
-    room!.referendumActive = false; room!.referendumProtectedId = null;
-    room!.currentSpeaker = alive[0]?.id || null;
-
-    console.log(`[nextRound] ✅ Новый раунд: ${room!.currentRound}`);
-    sendSystemMessage(data.roomId, `🔄 Начался Раунд ${room!.currentRound}!`);
-    sendRoom(data.roomId, room!);
-    io.to(data.roomId).emit('roundStarted', { round: room!.currentRound });
-    callback({ success: true, finished: false, round: room!.currentRound });
+    // Статус finished
+    return callback({ success: false, error: 'Игра уже окончена. Нажмите "Новая игра".' });
   });
 
   // 17.1 Новая игра
