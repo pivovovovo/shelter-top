@@ -681,6 +681,36 @@ io.on('connection', (socket) => {
     return callback({ success: false, error: 'Игра уже окончена. Нажмите "Новая игра".' });
   });
 
+    // ⏭️ Пропустить голосование и сразу начать новый раунд
+  socket.on('skipToNextRound', (payload: unknown, callback: (res: any) => void) => {
+    const data = validatePayload<RoomActionInput>(roomActionSchema, payload, socket, callback);
+    if (!data) return;
+    const room = roomRepository.findRoomById(data.roomId);
+    
+    console.log(`[skipToNextRound] Запрос от ${data.playerId}, статус: ${room?.status}, раунд: ${room?.currentRound}`);
+    
+    if (!canControlRoom(room, data.playerId)) {
+      return callback({ success: false, error: 'Только хост или создатель' });
+    }
+
+    if (room!.status !== 'discussion') {
+      return callback({ success: false, error: 'Пропустить можно только во время обсуждения' });
+    }
+
+    const result = startNextRoundLogic(room!);
+    
+    if (result.finished) {
+      sendSystemMessage(data.roomId, `🏆 Бункер заполнен! Игра окончена.`);
+      sendRoom(data.roomId, room!);
+      return callback({ success: true, finished: true });
+    }
+    
+    sendSystemMessage(data.roomId, `⏭️ Хост пропустил голосование → Раунд ${result.round}!`);
+    sendRoom(data.roomId, room!);
+    io.to(data.roomId).emit('roundStarted', { round: result.round });
+    callback({ success: true, finished: false, round: result.round });
+  });
+
   // 17.1 Новая игра
   socket.on('restartGame', (payload: { roomId: string; playerId: string }, callback: (res: any) => void) => {
     const room = roomRepository.findRoomById(payload.roomId);

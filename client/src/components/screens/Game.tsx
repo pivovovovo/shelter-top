@@ -140,10 +140,18 @@ export const Game: React.FC = () => {
         </div>
       ) : null}
 
-      {canControl && (
-        <div className="mb-4">
+           {canControl && (
+        <div className="space-y-2 mb-4">
           <Button variant="danger" size="sm" fullWidth onClick={() => emitAction('startVoting')}>
-            🗳️ Завершить обсуждение и начать голосование
+            🗳️ Начать голосование
+          </Button>
+          <Button variant="ghost" size="sm" fullWidth onClick={() => {
+            if (!confirm('Пропустить голосование и сразу начать следующий раунд?\n\nГолоса учитываться НЕ будут.')) return;
+            socket.emit('skipToNextRound', { roomId, playerId }, (res: any) => {
+              if (!res?.success) alert(res?.error || 'Ошибка');
+            });
+          }}>
+            ⏭️ Пропустить голосование → Раунд {room.currentRound + 1}
           </Button>
         </div>
       )}
