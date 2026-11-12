@@ -36,6 +36,7 @@ export const Game: React.FC = () => {
   const [myCard, setMyCard] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('players');
   const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
+  const [isRevealing, setIsRevealing] = useState(false); // простая блокировка
   
   const [jokerCardIndex, setJokerCardIndex] = useState<number | null>(null);
   const [revealFieldByCard, setRevealFieldByCard] = useState<Record<number, string>>({});
@@ -78,12 +79,24 @@ export const Game: React.FC = () => {
   const baseLimit = room.currentRound <= 2 ? 2 : 1;
   const roundLimit = me?.hasScholar ? baseLimit + 1 : baseLimit;
   const speaker = room.players.find((p: any) => p.id === room.currentSpeaker);
+  const isMyTurn = room.currentSpeaker === playerId;
 
-  // 👇 Восстановлена эта функция
   const handleReveal = (field: string) => {
+    if (isRevealing) return;
+    setIsRevealing(true);
     sounds.reveal();
+    
     socket.emit('revealCard', { roomId, playerId, field }, (res: any) => {
-      if (!res?.success) alert(res?.error || 'Ошибка раскрытия');
+      // Сбрасываем блокировку через 300мс
+      setTimeout(() => setIsRevealing(false), 300);
+      
+      if (!res?.success) {
+        alert(res?.error || 'Ошибка раскрытия');
+        // Форс-синхронизация
+        socket.emit('syncRoom', { roomId, playerId, playerName, isHost: false }, (syncRes: any) => {
+          if (syncRes?.success) setRoom(syncRes.room);
+        });
+      }
     });
   };
 
@@ -112,17 +125,26 @@ export const Game: React.FC = () => {
 
   const renderPlayers = () => (
     <div className="space-y-3">
-      {speaker && (
-        <div className="bg-bunker-amber/10 border border-bunker-amber/30 rounded-xl p-3 text-center">
-          <span className="text-xs text-bunker-muted uppercase">Сейчас говорит</span>
-          <div className="font-bold text-bunker-amber">{speaker.name} {speaker.id === playerId && '(Вы)'}</div>
+      {/* Индикатор хода */}
+      {isMyTurn ? (
+        <div className="bg-bunker-amber/10 border-2 border-bunker-amber/50 rounded-xl p-3 text-center">
+          <div className="text-lg font-black text-bunker-amber">🎤 ВАШ ХОД</div>
+          <div className="text-xs text-bunker-text mt-1">
+            Раскрыто: {usedThisRound} / {roundLimit}
+          </div>
         </div>
-      )}
-      
+      ) : speaker ? (
+        <div className="bg-bunker-surface2 border border-bunker-border rounded-xl p-3 text-center">
+          <div className="text-sm text-bunker-muted">Сейчас говорит</div>
+          <div className="font-bold text-bunker-amber">{speaker.name}</div>
+        </div>
+      ) : null}
+
       {canControl && (
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          <Button variant="danger" size="sm" onClick={() => emitAction('startVoting')}>🗳️ К голосованию</Button>
-          <Button variant="ghost" size="sm" onClick={() => emitAction('nextRound')}>⏭️ След. раунд</Button>
+        <div className="mb-4">
+          <Button variant="danger" size="sm" fullWidth onClick={() => emitAction('startVoting')}>
+            🗳️ Завершить обсуждение и начать голосование
+          </Button>
         </div>
       )}
 
@@ -148,7 +170,8 @@ export const Game: React.FC = () => {
                 <div className="p-3 pt-0 border-t border-bunker-border/50 grid grid-cols-2 gap-2">
                   {fieldsConfig.map(({ key, label, icon }) => {
                     const revealed = p.revealedFields?.includes(key);
-                    const canReveal = isMe && room.currentSpeaker === playerId && usedThisRound < roundLimit && !revealed;
+                    // 👇 Кнопка показывается, если это я и есть место в лимите (ход не важен)
+                    const canReveal = isMe && usedThisRound < roundLimit && !revealed && !isRevealing;
                     const val = isMe ? myCard?.[key] : p.card?.[key];
                     const val2 = isMe ? myCard?.[`${key}2`] : p.card?.[`${key}2`];
 
@@ -156,7 +179,14 @@ export const Game: React.FC = () => {
                       <div key={key} className="bg-bunker-surface2 p-2 rounded-lg">
                         <div className="flex justify-between items-center mb-1">
                           <span className="text-[10px] text-bunker-muted uppercase">{icon} {label}</span>
-                          {canReveal && <button onClick={() => handleReveal(key)} className="text-xs bg-bunker-amber text-black px-1.5 py-0.5 rounded">👁️</button>}
+                          {canReveal && (
+                            <button 
+                              onClick={() => handleReveal(key)} 
+                              className="text-xs bg-bunker-amber text-black px-1.5 py-0.5 rounded"
+                            >
+                              👁️
+                            </button>
+                          )}
                           {revealed && <span className="text-bunker-green text-[10px]">✓</span>}
                         </div>
                         <div className={`text-xs ${revealed || isMe ? 'text-bunker-text' : 'text-bunker-muted'}`}>

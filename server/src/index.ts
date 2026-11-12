@@ -371,7 +371,7 @@ io.on('connection', (socket) => {
   });
 
   // 8. Раскрытие характеристики
-  socket.on('revealCard', (payload: unknown, callback: (res: any) => void) => {
+   socket.on('revealCard', (payload: unknown, callback: (res: any) => void) => {
     const data = validatePayload<RevealCardInput>(revealCardSchema, payload, socket, callback);
     if (!data) return;
     const room = roomRepository.findRoomById(data.roomId);
@@ -381,7 +381,6 @@ io.on('connection', (socket) => {
     const player = room.players.get(data.playerId);
     if (!player || !player.isAlive) return callback({ success: false, error: 'Игрок не найден' });
     if (player.revealedFields.includes(data.field)) return callback({ success: false, error: 'Это поле уже раскрыто' });
-    if (room.currentSpeaker !== data.playerId) return callback({ success: false, error: 'Сейчас не ваша очередь' });
 
     const baseLimit = room.currentRound <= 2 ? 2 : 1;
     const limit = player.hasScholar ? baseLimit + 1 : baseLimit;
@@ -395,11 +394,14 @@ io.on('connection', (socket) => {
     player.revealedFields.push(data.field);
     player.revealedThisRound.push(data.field);
 
+    console.log(`[reveal] ${player.name}: ${data.field} (${player.revealedThisRound.length}/${limit})`);
+
     if (player.revealedThisRound.length >= limit) {
       const alive = getAlivePlayers(room);
       const currentIndex = alive.findIndex((p) => p.id === data.playerId);
       room.currentSpeaker = alive[(currentIndex + 1) % alive.length].id;
     }
+    
     sendRoom(data.roomId, room);
     callback({ success: true });
   });
