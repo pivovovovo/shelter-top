@@ -23,7 +23,7 @@ const fieldsConfig = [
   { key: 'luggage', label: 'Багаж', icon: '🎒' },
   { key: 'phobia', label: 'Фобия', icon: '😨' },
   { key: 'specialInfo', label: 'Доп. инфо', icon: '🤫' },
-  { key: 'fact', label: 'Факт', icon: '💡' }, // 👈
+  { key: 'fact', label: 'Факт', icon: '💡' },
 ] as const;
 
 export const Results: React.FC = () => {
@@ -31,6 +31,7 @@ export const Results: React.FC = () => {
   const navigate = useNavigate();
   const { refreshUser } = useAuth();
   const [room, setRoom] = useState<any>(null);
+  const [loading, setLoading] = useState<string | null>(null);
 
   const playerId = localStorage.getItem('bunker_playerId') || '';
   const playerName = localStorage.getItem('bunker_playerName') || 'Игрок';
@@ -45,6 +46,7 @@ export const Results: React.FC = () => {
     });
 
     const onUpdate = (r: any) => {
+      console.log('[Results] roomUpdated:', r.status);
       setRoom(r);
       if (r.lastVotingResult?.excludedPlayerId && r.lastVotingResult.excludedPlayerId !== room?.lastVotingResult?.excludedPlayerId) sounds.boom();
       if (r.status === 'discussion') navigate(`/game/${roomId}`);
@@ -56,22 +58,61 @@ export const Results: React.FC = () => {
     return () => { socket.off('roomUpdated', onUpdate); };
   }, [roomId, playerId, playerName, navigate, room?.lastVotingResult?.excludedPlayerId]);
 
+  const syncAndNavigate = () => {
+    socket.emit('syncRoom', { roomId, playerId, playerName, isHost: false }, (res: any) => {
+      if (res?.success) {
+        setRoom(res.room);
+        if (res.room.status === 'discussion') navigate(`/game/${roomId}`);
+        if (res.room.status === 'voting') navigate(`/voting/${roomId}`);
+        if (res.room.status === 'lobby') navigate(`/lobby/${roomId}`);
+      }
+    });
+  };
+
   const handleNextRound = () => {
-    socket.emit('nextRound', { roomId, playerId }, (res: any) => { if (!res?.success) alert(res?.error); });
+    setLoading('next');
+    console.log('📤 Отправляем nextRound, статус:', room?.status);
+    socket.emit('nextRound', { roomId, playerId }, (res: any) => {
+      setLoading(null);
+      console.log('📥 Ответ nextRound:', res);
+      if (!res?.success) {
+        alert(res?.error || 'Ошибка');
+        syncAndNavigate();
+      }
+    });
   };
+
   const handleRevealAll = () => {
-    socket.emit('revealAll', { roomId, playerId }, (res: any) => { if (!res?.success) alert(res?.error); });
+    setLoading('reveal');
+    socket.emit('revealAll', { roomId, playerId }, (res: any) => {
+      setLoading(null);
+      if (!res?.success) alert(res?.error);
+    });
   };
+
   const handleRestart = () => {
-    socket.emit('restartGame', { roomId, playerId }, (res: any) => { if (!res?.success) alert(res?.error); });
+    setLoading('restart');
+    socket.emit('restartGame', { roomId, playerId }, (res: any) => {
+      setLoading(null);
+      if (!res?.success) {
+        alert(res?.error);
+        syncAndNavigate();
+      }
+    });
   };
-  const goHome = async () => { await refreshUser(); navigate('/'); };
+
+  const goHome = async () => {
+    await refreshUser();
+    navigate('/');
+  };
 
   if (!room) return <div className="min-h-screen flex items-center justify-center text-bunker-amber">Загрузка...</div>;
 
   const me = room.players.find((p: any) => p.id === playerId);
-  const isHost = me?.isHost;
-  const alivePlayers = room.players.filter((p: any) => p.isAlive && !p.isObserver);
+  const isCreator = room.creatorId === playerId || room.players[0]?.id === playerId;
+  const canControl = me?.isHost || isCreator;
+
+  const alivePlayers = room.players.filter((p: any) => p.isAlive);
   const finished = alivePlayers.length <= room.bunkerCapacity;
   const excludedId = room.lastVotingResult?.excludedPlayerId;
   const excludedPlayer = room.players.find((p: any) => p.id === excludedId);
@@ -98,17 +139,19 @@ export const Results: React.FC = () => {
           </div>
         </Card>
 
-        {!room.allRevealed && isHost && (
-          <Button onClick={handleRevealAll} variant="primary" fullWidth size="lg" className="mb-6">🔓 Раскрыть все карты</Button>
+        {!room.allRevealed && canControl && (
+          <Button onClick={handleRevealAll} loading={loading === 'reveal'} variant="primary" fullWidth size="lg" className="mb-6">
+            🔓 Раскрыть все карты
+          </Button>
         )}
-        {!room.allRevealed && !isHost && (
-          <div className="text-center text-bunker-muted py-3 text-sm bg-bunker-surface2 rounded-xl border border-bunker-border mb-6">⏳ Ожидание хоста для раскрытия карт...</div>
+        {!room.allRevealed && !canControl && (
+          <div className="text-center text-bunker-muted py-3 text-sm bg-bunker-surface2 rounded-xl border border-bunker-border mb-6">⏳ Ожидание хоста...</div>
         )}
 
         {room.allRevealed && (
           <div className="space-y-4 mb-8">
             <h3 className="text-xs font-bold text-bunker-muted uppercase px-1">Все персонажи</h3>
-            {room.players.filter((p: any) => !p.isObserver).map((p: any) => (
+            {room.players.map((p: any) => (
               <Card key={p.id} className={`p-4 border-2 ${p.isAlive ? 'border-bunker-green/30' : 'border-bunker-border opacity-70'}`}>
                 <div className="flex items-center gap-3 mb-3 pb-2 border-b border-bunker-border">
                   <span className="text-2xl">{getAvatar(p.id)}</span>
@@ -136,7 +179,11 @@ export const Results: React.FC = () => {
         )}
 
         <div className="mt-auto pb-8 space-y-3">
-          {isHost && <Button variant="success" fullWidth size="lg" onClick={handleRestart}>🔄 Новая игра</Button>}
+          {canControl && (
+            <Button variant="success" fullWidth size="lg" onClick={handleRestart} loading={loading === 'restart'}>
+              🔄 Новая игра
+            </Button>
+          )}
           <Button variant="ghost" fullWidth size="lg" onClick={goHome}>🏠 В главное меню</Button>
         </div>
       </div>
@@ -147,7 +194,7 @@ export const Results: React.FC = () => {
     <div className="min-h-screen bg-bunker-bg p-4 max-w-md mx-auto flex flex-col">
       <div className="text-center mb-6 mt-4">
         <h1 className="text-3xl font-black text-amber-glow mb-1">Результаты</h1>
-        <p className="text-sm text-bunker-muted">Раунд {room.currentRound}</p>
+        <p className="text-sm text-bunker-muted">Раунд {room.currentRound} • Статус: {room.status}</p>
       </div>
 
       <Card className="p-5 text-center mb-6 border-2 border-bunker-red bg-bunker-red/5">
@@ -157,7 +204,7 @@ export const Results: React.FC = () => {
 
       <div className="space-y-2 mb-6">
         <h3 className="text-xs font-bold text-bunker-muted uppercase px-1">Голоса</h3>
-        {room.players.filter((p: any) => !p.isObserver).map((p: any) => {
+        {room.players.map((p: any) => {
           const count = voteCounts[p.id] || 0;
           return (
             <div key={p.id} className="flex justify-between items-center bg-bunker-surface2 p-3 rounded-xl border border-bunker-border">
@@ -169,8 +216,13 @@ export const Results: React.FC = () => {
       </div>
 
       <div className="mt-auto space-y-3 pb-8">
-        {isHost && <Button variant="primary" fullWidth size="lg" onClick={handleNextRound}>⏭️ Следующий раунд</Button>}
-        {!isHost && <div className="text-center text-bunker-muted py-3 text-sm bg-bunker-surface2 rounded-xl border border-bunker-border">Ожидание хоста...</div>}
+        {canControl ? (
+          <Button variant="primary" fullWidth size="lg" onClick={handleNextRound} loading={loading === 'next'}>
+            ⏭️ Следующий раунд ({room.currentRound + 1})
+          </Button>
+        ) : (
+          <div className="text-center text-bunker-muted py-3 text-sm bg-bunker-surface2 rounded-xl border border-bunker-border">Ожидание хоста...</div>
+        )}
       </div>
     </div>
   );

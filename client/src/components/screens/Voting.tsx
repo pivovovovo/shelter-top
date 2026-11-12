@@ -54,7 +54,9 @@ export const Voting: React.FC = () => {
   if (!room) return <div className="min-h-screen flex items-center justify-center text-bunker-amber">Загрузка...</div>;
 
   const me = room.players.find((p: any) => p.id === playerId);
-  const isHost = me?.isHost;
+  const isCreator = room.creatorId === playerId || room.players[0]?.id === playerId;
+  const isHost = me?.isHost || isCreator;
+  const canControl = isHost;
   const isObserver = me?.isObserver;
   const alivePlayers = room.players.filter((p: any) => p.isAlive && !p.isObserver);
   const votes = room.votes || [];

@@ -77,6 +77,14 @@ function getAlivePlayers(room: Room): Player[] {
   return Array.from(room.players.values()).filter((p) => p.isAlive);
 }
 
+function canControlRoom(room: Room | undefined, playerId: string): boolean {
+  if (!room) return false;
+  const player = room.players.get(playerId);
+  const isCreator = room.creatorId === playerId;
+  const isFirstPlayer = Array.from(room.players.values())[0]?.id === playerId;
+  return !!(player?.isHost || isCreator || isFirstPlayer);
+}
+
 function validatePayload<T>(schema: any, payload: unknown, socket: any, callback?: (res: any) => void): T | null {
   const result = schema.safeParse(payload);
   if (!result.success) {
@@ -455,7 +463,7 @@ io.on('connection', (socket) => {
     if (!data) return;
     const room = roomRepository.findRoomById(data.roomId);
     if (!room || room.status !== 'voting') return callback({ success: false, error: 'Голосование не идёт' });
-
+    
     const voter = room.players.get(data.playerId);
     const target = room.players.get(data.targetPlayerId);
     if (!voter?.isAlive || !target?.isAlive) return callback({ success: false, error: 'Некорректная цель' });
@@ -473,6 +481,7 @@ io.on('connection', (socket) => {
   socket.on('finishVoting', (payload: { roomId: string }, callback: (res: any) => void) => {
     const room = roomRepository.findRoomById(payload.roomId);
     if (!room || room.status !== 'voting') return callback({ success: false, error: 'Голосование не идёт' });
+    if (!canControlRoom(room, payload.roomId)) return callback({ success: false, error: 'Только хост' });
     finishVotingByHost(payload.roomId, room, callback);
     saveGameStats(room);
   });
@@ -481,8 +490,7 @@ io.on('connection', (socket) => {
   socket.on('confirmExclusion', (payload: { roomId: string; playerId: string }, callback: (res: any) => void) => {
     const room = roomRepository.findRoomById(payload.roomId);
     if (!room || room.status !== 'voting') return callback({ success: false, error: 'Сейчас не голосование' });
-    const host = room.players.get(payload.playerId);
-    if (!host?.isHost) return callback({ success: false, error: 'Только хост' });
+    if (!canControlRoom(room, payload.playerId)) return callback({ success: false, error: 'Только хост' });
     finishVotingByHost(payload.roomId, room, callback);
     saveGameStats(room);
   });
@@ -491,9 +499,7 @@ io.on('connection', (socket) => {
   socket.on('skipVoting', (payload: { roomId: string; playerId: string }, callback: (res: any) => void) => {
     const room = roomRepository.findRoomById(payload.roomId);
     if (!room || room.status !== 'voting') return callback({ success: false, error: 'Сейчас не голосование' });
-    const host = room.players.get(payload.playerId);
-    if (!host?.isHost) return callback({ success: false, error: 'Только хост' });
-
+    if (!canControlRoom(room, payload.playerId)) return callback({ success: false, error: 'Только хост' });
     const counts = calculateVoteCounts(room);
     let excludedId = getLeader(counts);
     let maxVotes = 0;
@@ -522,8 +528,7 @@ io.on('connection', (socket) => {
   socket.on('editVoteCount', (payload: { roomId: string; playerId: string; targetId: string; delta: number }, callback: (res: any) => void) => {
     const room = roomRepository.findRoomById(payload.roomId);
     if (!room || room.status !== 'voting') return callback({ success: false, error: 'Сейчас не голосование' });
-    const host = room.players.get(payload.playerId);
-    if (!host?.isHost) return callback({ success: false, error: 'Только хост' });
+    if (!canControlRoom(room, payload.playerId)) return callback({ success: false, error: 'Только хост' });
     const target = room.players.get(payload.targetId);
     if (!target || !target.isAlive) return callback({ success: false, error: 'Игрок не найден' });
 
@@ -538,9 +543,7 @@ io.on('connection', (socket) => {
   socket.on('removePlayerVote', (payload: { roomId: string; playerId: string; voterId: string }, callback: (res: any) => void) => {
     const room = roomRepository.findRoomById(payload.roomId);
     if (!room || room.status !== 'voting') return callback({ success: false, error: 'Сейчас не голосование' });
-    const host = room.players.get(payload.playerId);
-    if (!host?.isHost) return callback({ success: false, error: 'Только хост' });
-
+    if (!canControlRoom(room, payload.playerId)) return callback({ success: false, error: 'Только хост' });
     const voteIndex = room.votes.findIndex((v) => v.voterId === payload.voterId);
     if (voteIndex === -1) return callback({ success: false, error: 'Этот игрок ещё не голосовал' });
 
@@ -553,9 +556,7 @@ io.on('connection', (socket) => {
   socket.on('hostExclude', (payload: { roomId: string; playerId: string; targetId: string }, callback: (res: any) => void) => {
     const room = roomRepository.findRoomById(payload.roomId);
     if (!room || room.status !== 'voting') return callback({ success: false, error: 'Сейчас не голосование' });
-    const host = room.players.get(payload.playerId);
-    if (!host?.isHost) return callback({ success: false, error: 'Только хост' });
-
+   if (!canControlRoom(room, payload.playerId)) return callback({ success: false, error: 'Только хост' });
     const target = room.players.get(payload.targetId);
     if (!target || !target.isAlive || payload.playerId === payload.targetId) return callback({ success: false, error: 'Некорректная цель' });
 
@@ -576,42 +577,54 @@ io.on('connection', (socket) => {
   });
 
   // 17. Следующий раунд
-  socket.on('nextRound', (payload: unknown, callback: (res: any) => void) => {
+    socket.on('nextRound', (payload: unknown, callback: (res: any) => void) => {
     const data = validatePayload<RoomActionInput>(roomActionSchema, payload, socket, callback);
     if (!data) return;
     const room = roomRepository.findRoomById(data.roomId);
-    if (!room || !room.players.get(data.playerId)?.isHost) return callback({ success: false, error: 'Только хост' });
+    
+    console.log(`[nextRound] Запрос от ${data.playerId}, статус: ${room?.status}, раунд: ${room?.currentRound}`);
+    
+    if (!canControlRoom(room, data.playerId)) {
+      console.log(`[nextRound] ❌ Нет прав`);
+      return callback({ success: false, error: 'Только хост или создатель' });
+    }
 
-    const alive = getAlivePlayers(room);
-    if (alive.length <= room.bunkerCapacity) {
-      room.status = 'finished';
-      sendRoom(data.roomId, room);
+    if (room!.status !== 'results') {
+      return callback({ 
+        success: false, 
+        error: `Нельзя начать новый раунд сейчас (статус: ${room!.status}). Завершите обсуждение голосованием.` 
+      });
+    }
+
+    const alive = getAlivePlayers(room!);
+    if (alive.length <= room!.bunkerCapacity) {
+      room!.status = 'finished';
+      sendRoom(data.roomId, room!);
       return callback({ success: true, finished: true });
     }
 
-    room.currentRound += 1;
-    room.status = 'discussion';
-    room.votes = [];
-    room.players.forEach((p) => {
+    room!.currentRound += 1;
+    room!.status = 'discussion';
+    room!.votes = [];
+    room!.players.forEach((p) => {
       p.revealedThisRound = []; p.hasScholar = false; p.hostBonusVotes = 0;
       p.blockedFromVoting = []; p.isDiscredited = false; p.isIsolated = false;
     });
-    room.referendumActive = false; room.referendumProtectedId = null;
-    room.currentSpeaker = alive[0]?.id || null;
+    room!.referendumActive = false; room!.referendumProtectedId = null;
+    room!.currentSpeaker = alive[0]?.id || null;
 
-    sendSystemMessage(data.roomId, `🔄 Начался Раунд ${room.currentRound}!`);
-    sendRoom(data.roomId, room);
-    io.to(data.roomId).emit('roundStarted', { round: room.currentRound });
-    callback({ success: true, finished: false, round: room.currentRound });
+    console.log(`[nextRound] ✅ Новый раунд: ${room!.currentRound}`);
+    sendSystemMessage(data.roomId, `🔄 Начался Раунд ${room!.currentRound}!`);
+    sendRoom(data.roomId, room!);
+    io.to(data.roomId).emit('roundStarted', { round: room!.currentRound });
+    callback({ success: true, finished: false, round: room!.currentRound });
   });
 
   // 17.1 Новая игра
   socket.on('restartGame', (payload: { roomId: string; playerId: string }, callback: (res: any) => void) => {
     const room = roomRepository.findRoomById(payload.roomId);
     if (!room) return callback({ success: false, error: 'Комната не найдена' });
-    const host = room.players.get(payload.playerId);
-    if (!host?.isHost) return callback({ success: false, error: 'Только хост' });
-
+    if (!canControlRoom(room, payload.playerId)) return callback({ success: false, error: 'Только хост' });
     room.status = 'lobby'; room.currentRound = 1; room.allRevealed = false;
     room.votes = []; room.catastrophe = null; room.bunker = null;
     room.pendingRevealRequests = []; room.lastVotingResult = null;
@@ -632,7 +645,7 @@ io.on('connection', (socket) => {
   // 18. Перевыборы
   socket.on('startRevote', (payload: { roomId: string; playerId: string }, callback: (res: any) => void) => {
     const room = roomRepository.findRoomById(payload.roomId);
-    if (!room || !room.players.get(payload.playerId)?.isHost || room.status !== 'results') return callback({ success: false, error: 'Ошибка' });
+    if (!room || !canControlRoom(room, payload.playerId) || room.status !== 'results') return callback({ success: false, error: 'Ошибка' });
     room.status = 'voting'; room.votes = [];
     room.players.forEach((p) => { p.hostBonusVotes = 0; });
     sendSystemMessage(payload.roomId, `⚡ Хост запустил перевыборы!`);
@@ -953,8 +966,7 @@ io.on('connection', (socket) => {
   socket.on('kickPlayer', (payload: { roomId: string; playerId: string; targetId: string }, callback: (res: any) => void) => {
     const room = roomRepository.findRoomById(payload.roomId);
     if (!room) return callback({ success: false, error: 'Комната не найдена' });
-    const host = room.players.get(payload.playerId);
-    if (!host?.isHost) return callback({ success: false, error: 'Только хост' });
+    if (!canControlRoom(room, payload.playerId)) return callback({ success: false, error: 'Только хост' });
     const target = room.players.get(payload.targetId);
     if (!target) return callback({ success: false, error: 'Игрок не найден' });
 

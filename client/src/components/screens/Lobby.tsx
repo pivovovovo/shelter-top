@@ -141,7 +141,8 @@ export const Lobby: React.FC = () => {
   }
 
   const me = room.players.find((p: any) => p.id === playerId);
-  const isHost = me?.isHost;
+  const isCreator = room.creatorId === playerId || room.players[0]?.id === playerId;
+  const isHost = me?.isHost || isCreator;
   const placesLeft = room.maxPlayers - room.players.length;
   const canStart = room.players.length >= 2;
 
